@@ -387,7 +387,6 @@ obj-$(CONFIG_MSM_DCVS) += msm_mpdecision_qcom.o
 endif
 
 obj-$(CONFIG_MSM_RUN_QUEUE_STATS) += msm_rq_stats.o
-obj-$(CONFIG_MSM_ASMP) += msm_autosmp.o
 obj-$(CONFIG_MSM_SHOW_RESUME_IRQ) += msm_show_resume_irq.o
 obj-$(CONFIG_BT_MSM_PINTEST)  += btpintest.o
 obj-$(CONFIG_MSM_FAKE_BATTERY) += fish_battery.o
