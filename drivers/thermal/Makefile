@@ -9,7 +9,11 @@ obj-$(CONFIG_THERMAL_TSENS8960) += msm8960_tsens.o
 obj-$(CONFIG_THERMAL_PM8XXX)	+= pm8xxx-tm.o
 ifdef CONFIG_BRICKED_THERMAL
 	obj-$(CONFIG_BRICKED_THERMAL)	+= bricked/msm_thermal.o
-else
+endif
+ifdef CONFIG_INTELLI_THERMAL
+	obj-$(CONFIG_INTELLI_THERMAL)	+= intelli/msm_thermal.o
+endif
+ifdef CONFIG_THERMAL_MONITOR
 	obj-$(CONFIG_THERMAL_MONITOR)	+= msm_thermal.o
 endif
 obj-$(CONFIG_SPEAR_THERMAL)		+= spear_thermal.o
