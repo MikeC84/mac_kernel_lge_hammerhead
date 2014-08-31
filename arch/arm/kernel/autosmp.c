@@ -21,7 +21,11 @@
  */
 
 #include <linux/moduleparam.h>
+#ifdef CONFIG_EARLYSUSPEND
 #include <linux/earlysuspend.h>
+#else
+#include <linux/lcd_notify.h>
+#endif
 #include <linux/cpufreq.h>
 #include <linux/workqueue.h>
 #include <linux/cpu.h>
@@ -37,6 +41,7 @@ struct asmp_cpudata_t {
 	long long unsigned int times_hotplugged;
 };
 
+static struct notifier_block asmp_lcd_notif;
 static struct delayed_work asmp_work;
 static struct workqueue_struct *asmp_workq;
 static DEFINE_PER_CPU(struct asmp_cpudata_t, asmp_cpudata);
@@ -50,6 +55,8 @@ static struct asmp_param_struct {
 	unsigned int cpufreq_down;
 	unsigned int cycle_up;
 	unsigned int cycle_down;
+	struct work_struct suspend_work;
+	struct work_struct resume_work;
 } asmp_param = {
 	.delay = 100,
 	.scroff_single_core = true,
@@ -64,7 +71,7 @@ static struct asmp_param_struct {
 static unsigned int cycle = 0;
 static int enabled __read_mostly = 1;
 
-static void __cpuinit asmp_work_fn(struct work_struct *work) {
+static void asmp_work_fn(struct work_struct *work) {
 	unsigned int cpu = 0, slow_cpu = 0;
 	unsigned int rate, cpu0_rate, slow_rate = UINT_MAX, fast_rate;
 	unsigned int max_rate, up_rate, down_rate;
@@ -124,7 +131,11 @@ static void __cpuinit asmp_work_fn(struct work_struct *work) {
 			   msecs_to_jiffies(asmp_param.delay));
 }
 
+#ifdef CONFIG_EARLYSUSPEND
 static void asmp_early_suspend(struct early_suspend *h) {
+#else
+static void asmp_suspend(struct work_struct *asmp_suspend_work) {
+#endif
 	int cpu;
 
 	/* unplug online cpu cores */
@@ -139,8 +150,15 @@ static void asmp_early_suspend(struct early_suspend *h) {
 
 	pr_info(ASMP_TAG"suspended\n");
 }
+#ifndef CONFIG_EARLYSUSPEND
+static DECLARE_WORK(asmp_suspend_work, asmp_suspend);
+#endif
 
-static void __cpuinit asmp_late_resume(struct early_suspend *h) {
+#ifdef CONFIG_EARLYSUSPEND
+static void asmp_late_resume(struct early_suspend *h) {
+#else
+static void asmp_resume(struct work_struct *asmp_resume_work) {
+#endif
 	int cpu;
 
 	/* hotplug offline cpu cores */
@@ -156,14 +174,35 @@ static void __cpuinit asmp_late_resume(struct early_suspend *h) {
 
 	pr_info(ASMP_TAG"resumed\n");
 }
+#ifndef CONFIG_EARLYSUSPEND
+static DECLARE_WORK(asmp_resume_work, asmp_resume);
+#endif
 
+#ifdef CONFIG_EARLYSUSPEND
 static struct early_suspend __refdata asmp_early_suspend_handler = {
 	.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN,
 	.suspend = asmp_early_suspend,
 	.resume = asmp_late_resume,
 };
+#else
+static int asmp_lcd_notifier_callback(struct notifier_block *this,
+				unsigned long event, void *data) {
+	switch (event) {
+	case LCD_EVENT_OFF_START:
+		schedule_work(&asmp_suspend_work);
+		break;
+	case LCD_EVENT_ON_START:
+		schedule_work(&asmp_resume_work);
+		break;
+	default:
+		break;
+	}
 
-static int __cpuinit set_enabled(const char *val, const struct kernel_param *kp) {
+	return 0;
+}
+#endif
+
+static int set_enabled(const char *val, const struct kernel_param *kp) {
 	int ret;
 	int cpu;
 
@@ -281,7 +320,7 @@ static struct attribute_group asmp_stats_attr_group = {
 /****************************** SYSFS END ******************************/
 
 static int __init asmp_init(void) {
-	int cpu, rc;
+	int cpu, rc, err = 0;
 
 	for_each_possible_cpu(cpu)
 		per_cpu(asmp_cpudata, cpu).times_hotplugged = 0;
@@ -294,7 +333,16 @@ static int __init asmp_init(void) {
 		queue_delayed_work(asmp_workq, &asmp_work,
 				   msecs_to_jiffies(ASMP_STARTDELAY));
 
+#ifdef CONFIG_EARLYSUSPEND
 	register_early_suspend(&asmp_early_suspend_handler);
+#else
+asmp_lcd_notif.notifier_call = asmp_lcd_notifier_callback;
+	if (lcd_register_client(&asmp_lcd_notif) != 0) {
+		pr_err(ASMP_TAG"Failed to register lcd notifier callback");
+		err = -EINVAL;
+		lcd_unregister_client(&asmp_lcd_notif);
+	}
+#endif
 
 	asmp_kobject = kobject_create_and_add("autosmp", kernel_kobj);
 	if (asmp_kobject) {
@@ -312,4 +360,11 @@ static int __init asmp_init(void) {
 	pr_info(ASMP_TAG"initialized\n");
 	return 0;
 }
+
+#ifndef CONFIG_EARLYSUSPEND
+void asmp_exit(void) {
+	lcd_unregister_client(&asmp_lcd_notif);
+}
+#endif
+
 late_initcall(asmp_init);
