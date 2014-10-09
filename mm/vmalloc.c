@@ -2619,21 +2619,11 @@ static const struct seq_operations vmalloc_op = {
 
 static int vmalloc_open(struct inode *inode, struct file *file)
 {
-	unsigned int *ptr = NULL;
-	int ret;
-
-	if (NUMA_BUILD) {
-		ptr = kmalloc(nr_node_ids * sizeof(unsigned int), GFP_KERNEL);
-		if (ptr == NULL)
-			return -ENOMEM;
-	}
-	ret = seq_open(file, &vmalloc_op);
-	if (!ret) {
-		struct seq_file *m = file->private_data;
-		m->private = ptr;
-	} else
-		kfree(ptr);
-	return ret;
+	if (NUMA_BUILD)
+		return seq_open_private(file, &vmalloc_op,
+					nr_node_ids * sizeof(unsigned int));
+	else
+		return seq_open(file, &vmalloc_op);
 }
 
 static const struct file_operations proc_vmalloc_operations = {
