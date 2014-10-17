@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/err.h>
+#include <linux/input/sweep2wake.h>
 #include <linux/input/doubletap2wake.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
